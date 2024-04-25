@@ -17,20 +17,19 @@ var foodCourses = []string{
 
 // takeLunch is the consumer function for the lunch simulation
 // Change the signature of this function as required
-func takeLunch(name string, in []chan string, done chan<- struct{}) {
-	for _, ch := range in {
-		v := <-ch
-		log.Printf("%s eats %s.\n", name, v)
+func takeLunch(name string, input []chan string, done chan<- struct{}) {
+	for _, course := range input {
+		fmt.Printf("%s eats %s\n", name, <-course)
 	}
 	done <- struct{}{}
 }
 
 // serveLunch is the producer function for the lunch simulation.
 // Change the signature of this function as required
-func serveLunch(course string, out chan<- string, done <-chan struct{}) {
+func serveLunch(course string, output chan<- string, done <-chan struct{}) {
 	for {
 		select {
-		case out <- course:
+		case output <- course:
 		case <-done:
 			return
 		}
@@ -40,21 +39,35 @@ func serveLunch(course string, out chan<- string, done <-chan struct{}) {
 func main() {
 	log.Printf("Welcome to the conference lunch! Serving %d attendees.\n",
 		consumerCount)
-	var courses []chan string
+	// doneEating channel
 	doneEating := make(chan struct{})
+	//doneServing channel
 	doneServing := make(chan struct{})
-	for _, c := range foodCourses {
+	// lista de canais de courses
+	var courses []chan string
+
+	// encerrar serverLauch
+	defer close(doneServing)
+
+	// loop foodCourses
+	for _, course := range foodCourses {
+		// criar canal
 		ch := make(chan string)
+		// colocar canal criado na lista
 		courses = append(courses, ch)
-		go serveLunch(c, ch, doneServing)
-	}
-	for i := 0; i < consumerCount; i++ {
-		name := fmt.Sprintf("Attendee %d", i)
-		go takeLunch(name, courses, doneEating)
+		// chamar serveLunch em background
+		go serveLunch(course, ch, doneServing)
 	}
 
+	// loop consumerCount colocando os Attendees na fila
+	for i := 0; i < consumerCount; i++ {
+		// variavel name = "Attendee 1"
+		name := fmt.Sprintf("Attendee %d", i)
+		// chamar takeLunch em background
+		go takeLunch(name, courses, doneEating)
+	}
+	// loop consumerCount aguardando o print na tela
 	for i := 0; i < consumerCount; i++ {
 		<-doneEating
 	}
-	close(doneServing)
 }

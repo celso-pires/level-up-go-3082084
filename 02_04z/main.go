@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	"runtime"
 	"time"
 )
 
@@ -35,52 +34,71 @@ type auctioneer struct {
 }
 
 // runAuction and manages the auction for all the items to be sold
-func (a *auctioneer) runAuction(bids <-chan bid, open chan<- struct{}) {
+// Change the signature of this function as required
+// ==== recebe bids e open channels
+func (a *auctioneer) runAuction(bids chan bid, open chan struct{}) {
 	for _, item := range items {
 		log.Printf("Opening bids for %s!\n", item)
+		// chamar o método do auctioneer para abrir bid (escrever esse método auxiliar)
 		a.openBids(open)
+		// chamar o método do auctioneer para processar o vencedor (escrever esse método auxiliar)
 		a.processWinner(item, bids)
 	}
 }
 
 // openBids signals to all bidders that the auction for the item is open.
-func (a *auctioneer) openBids(open chan<- struct{}) {
+func (a *auctioneer) openBids(open chan struct{}) {
+	//== loop em bidderCount, sinalizando no canal "open" que é recebido via parâmetro
 	for i := 0; i < bidderCount; i++ {
 		open <- struct{}{}
 	}
 }
 
 // processWinner reads all the bids and finds the winner of the auction
-func (a *auctioneer) processWinner(item string, bids <-chan bid) {
+// == como parâmetros são recebidos item e bids (via canal)
+func (a *auctioneer) processWinner(item string, bids chan bid) {
+	//== fazer o loop em bidderCount para buscar o winner
 	var winner bid
 	for i := 0; i < bidderCount; i++ {
-		cb := <-bids
-		log.Println("processWinner", cb.bidderID)
-		if winner.amount < cb.amount {
-			winner = cb
+		currentBid := <-bids
+		log.Println("processWinner", currentBid.bidderID)
+		if currentBid.amount > winner.amount {
+			winner = currentBid
 		}
 	}
-	log.Printf("%s is sold to %s for %d!\n", item,
-		winner.bidderID, winner.amount)
+	//== enviar a mensagem informando: "item" is sold to "bitter" for "amount"
+	log.Printf("%s is sold to %s for %d\n",
+		item, winner.bidderID, winner.amount)
+	//== dentro do objeto auctioneer temos a lista de bidders, portanto chamar o método payBid do com o id do winner
 	a.bidders[winner.bidderID].payBid(winner.amount)
 }
 
-// bidder is a type that pays the bidder to their wallet
+// bidder is a type that holds the bidder id and wallet
 type bidder struct {
 	id     string
 	wallet int
 }
 
 // placeBid generates a random amount and places it on the bids channels
-func (b *bidder) placeBid(out chan<- bid, open <-chan struct{}) {
+// Change the signature of this function as required
+// == receber canais bid para output e open (sinalizador)
+func (b *bidder) placeBid(output chan<- bid, open <-chan struct{}) {
+	// loop na quantidade de items
 	for i := 0; i < len(items); i++ {
+		//== aguardar o sinal que a bid está open - canal open -- struct vazia
+		log.Printf("I am %s. Waiting to place my bid.", b.id)
 		<-open
-		currentBid := bid{bidderID: b.id}
+		log.Printf("I am %s. Got the signal.", b.id)
+		//== inicializar currentBid com o id
+		currentBid := bid{
+			bidderID: b.id,
+		}
+		//== se o valor que o bidder tiver na waller for maior que zero, pegar o valor random sendo o máximo que ele tem
 		if b.wallet > 0 {
 			currentBid.amount = getRandomAmount(b.wallet)
 		}
-		out <- currentBid
-		runtime.Gosched()
+		// colocar o currentBid no canal de saída
+		output <- currentBid
 	}
 }
 
@@ -93,7 +111,9 @@ func main() {
 	rand.Seed(time.Now().UnixNano())
 	log.Println("Welcome to the LinkedIn Learning auction.")
 	bidders := make(map[string]*bidder, bidderCount)
+	// canal "bids" com tamanho de bidderCount (tipo bid) - buffered - não precisa esperar
 	bids := make(chan bid, bidderCount)
+	// canal "openBids" somente para sinalização
 	openBids := make(chan struct{})
 	for i := 0; i < bidderCount; i++ {
 		id := fmt.Sprint("Bidder ", i)
@@ -102,11 +122,13 @@ func main() {
 			wallet: walletAmount,
 		}
 		bidders[id] = &b
+		// passar os dois canais para placeBid(), sendo esses canais bids e openBids
 		go b.placeBid(bids, openBids)
 	}
 	a := auctioneer{
 		bidders: bidders,
 	}
+	// passar os dois canais para placeBid(), sendo esses canais bids e openBids
 	a.runAuction(bids, openBids)
 	log.Println("The LinkedIn Learning auction has finished!")
 }
